@@ -555,6 +555,17 @@ end $$;
 revoke all on function public.delete_user(uuid) from public, anon;
 grant execute on function public.delete_user(uuid) to authenticated;
 
+-- ---------------------------------------------------------------------
+-- 8) สิทธิ์ระดับตาราง (Supabase โปรเจกต์ใหม่ไม่ให้อัตโนมัติ)
+-- ---------------------------------------------------------------------
+grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete on all tables in schema public to anon, authenticated;
+grant usage, select on all sequences in schema public to anon, authenticated;
+grant execute on all functions in schema public to anon, authenticated;
+
+-- ฟังก์ชันที่ห้ามคนไม่ล็อกอินเรียก
+revoke execute on function public.delete_user(uuid) from anon;
+
 -- =====================================================================
 -- หลังรันเสร็จ: สมัครสมาชิกผ่านหน้าเว็บ 1 ครั้ง แล้วรันคำสั่งนี้เพื่อตั้งตัวเองเป็นแอดมิน
 --   update public.profiles set role = 'admin', username = 'ชื่อผู้ใช้' where email = 'อีเมลของคุณ';
