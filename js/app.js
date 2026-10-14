@@ -1,6 +1,6 @@
 // จุดเริ่มระบบ: ล็อกอิน, เมนู, เปลี่ยนหน้า
 import { sb, configured, state, isAdmin, q } from './store.js';
-import { COMPANY } from './config.js';
+import { COMPANY, OPEN_MODE } from './config.js';
 import { $, esc, icon, toast, errMsg, formData, busy, modal } from './ui.js';
 
 const ROUTES = {
@@ -15,6 +15,7 @@ const ROUTES = {
 };
 
 const app = $('#app');
+let routeToken = 0;
 
 // ---------------- ยังไม่ได้ตั้งค่า ----------------
 if (!configured) {
@@ -30,6 +31,14 @@ if (!configured) {
 }
 
 async function start() {
+  if (OPEN_MODE) {
+    state.user = { id: null, email: '' };
+    state.profile = { role: 'admin', full_name: 'โหมดทดสอบ', email: '' };
+    renderShell();
+    route();
+    window.addEventListener('hashchange', route);
+    return;
+  }
   const { data: { session } } = await sb.auth.getSession();
   await onSession(session);
   sb.auth.onAuthStateChange((evt, s) => {
@@ -139,22 +148,22 @@ function renderShell() {
       <nav class="nav">${main.map(a).join('')}
         ${admin.length ? `<div class="nav-group">ตั้งค่าระบบ</div>${admin.map(a).join('')}` : ''}</nav>
       <div class="who"><b>${esc(p.full_name || p.email)}</b>
-        ${p.role === 'admin' ? 'แอดมิน' : `พนักงานสาขา ${esc(p.branches?.name || '')}`}
+        ${OPEN_MODE ? 'สิทธิ์แอดมินเต็ม' : p.role === 'admin' ? 'แอดมิน' : `พนักงานสาขา ${esc(p.branches?.name || '')}`}
+        ${OPEN_MODE ? '<div class="small" style="color:var(--tape);margin-top:.4rem">ไม่ต้องล็อกอิน · ใครมีลิงก์ก็แก้ข้อมูลได้</div>' : `
         <div><button class="btn btn-ghost btn-sm" id="chpw">${icon('key')} เปลี่ยนรหัสผ่าน</button></div>
-        <div><button class="btn btn-ghost btn-sm" id="logout" style="margin-top:0">${icon('logout')} ออกจากระบบ</button></div></div>
+        <div><button class="btn btn-ghost btn-sm" id="logout" style="margin-top:0">${icon('logout')} ออกจากระบบ</button></div>`}</div>
     </aside>
     <div class="main">
       <div class="topbar"><button class="btn btn-ghost btn-icon" id="menuBtn" aria-label="เมนู" style="color:#fff">${icon('menu')}</button>
         <div class="brand-name">${esc(COMPANY.name)}</div></div>
       <main class="page" id="page"></main>
     </div></div>`;
-  $('#logout').onclick = () => sb.auth.signOut();
-  $('#chpw').onclick = changePassword;
+  $('#logout')?.addEventListener('click', () => sb.auth.signOut());
+  $('#chpw')?.addEventListener('click', changePassword);
   $('#menuBtn').onclick = () => $('#side').classList.toggle('open');
   $('#side').addEventListener('click', (e) => { if (e.target.closest('a')) $('#side').classList.remove('open'); });
 }
 
-let routeToken = 0;
 async function route() {
   if (!state.profile || state.profile.role === 'pending' || !$('#page')) return;
   let key = location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard';

@@ -17,7 +17,7 @@ export async function render(page) {
   const monthValue = lines.reduce((s, l) => s + Number(l.amount), 0);
   const p = state.profile;
 
-  page.innerHTML = `<div class="page-head"><div><h1>สวัสดี ${esc(p.full_name || '')}</h1>
+  page.innerHTML = `<div class="page-head"><div><h1>${p.full_name === 'โหมดทดสอบ' ? 'ภาพรวม' : `สวัสดี ${esc(p.full_name || '')}`}</h1>
       <p>${admin ? 'ภาพรวมคลังสินค้าและการจ่ายสินค้าไปสาขา' : `สาขา ${esc(p.branches?.name || '')}`} · ${fmtDate(new Date())}</p></div>
     ${admin ? `<div class="actions"><a class="btn btn-primary" href="#/shipments">${icon('truck')} ไปที่รับส่งสินค้า</a></div>` : ''}</div>
     <div class="stats">
