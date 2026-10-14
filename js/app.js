@@ -1,7 +1,7 @@
 // จุดเริ่มระบบ: ล็อกอิน, เมนู, เปลี่ยนหน้า
 import { sb, configured, state, isAdmin, q } from './store.js';
 import { COMPANY } from './config.js';
-import { $, esc, icon, toast, errMsg, formData, busy } from './ui.js';
+import { $, esc, icon, toast, errMsg, formData, busy, modal } from './ui.js';
 
 const ROUTES = {
   dashboard: { label: 'ภาพรวม', icon: 'home', load: () => import('./pages/dashboard.js') },
@@ -67,9 +67,11 @@ function renderAuth(mode = 'login') {
       <h2>${signup ? 'สมัครใช้งาน' : 'เข้าสู่ระบบ'}</h2>
       <p class="muted small" style="margin:0 0 1.25rem">${signup
         ? 'หลังสมัคร แอดมินต้องอนุมัติและกำหนดสาขาให้ก่อนจึงจะใช้งานได้'
-        : 'ใช้อีเมลและรหัสผ่านที่ลงทะเบียนไว้'}</p>
-      ${signup ? `<div class="field"><label for="fn">ชื่อ-สกุล</label><input id="fn" name="full_name" required autocomplete="name"></div>` : ''}
-      <div class="field"><label for="em">อีเมล</label><input id="em" name="email" type="email" required autocomplete="email"></div>
+        : 'ใช้ชื่อผู้ใช้ (หรืออีเมล) และรหัสผ่านที่ลงทะเบียนไว้'}</p>
+      ${signup ? `<div class="field"><label for="fn">ชื่อ-สกุล</label><input id="fn" name="full_name" required autocomplete="name"></div>
+      <div class="field"><label for="un">ชื่อผู้ใช้ (ใช้ตอนเข้าสู่ระบบ)</label><input id="un" name="username" required autocomplete="username"></div>
+      <div class="field"><label for="em">อีเมล</label><input id="em" name="email" type="email" required autocomplete="email"></div>`
+      : `<div class="field"><label for="lg">ชื่อผู้ใช้หรืออีเมล</label><input id="lg" name="login" required autocomplete="username"></div>`}
       <div class="field"><label for="pw">รหัสผ่าน</label><input id="pw" name="password" type="password" required minlength="6" autocomplete="${signup ? 'new-password' : 'current-password'}">
         ${signup ? '<div class="hint">อย่างน้อย 6 ตัวอักษร</div>' : ''}</div>
       <button class="btn btn-primary" type="submit" style="width:100%">${signup ? 'สมัครใช้งาน' : 'เข้าสู่ระบบ'}</button>
@@ -81,12 +83,14 @@ function renderAuth(mode = 'login') {
   $('#authForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = formData(e.target);
-    if (!f.email || !f.password) return toast('กรุณากรอกอีเมลและรหัสผ่าน', 'error');
+    if (signup && (!f.email || !f.username?.trim())) return toast('กรุณากรอกชื่อผู้ใช้และอีเมล', 'error');
+    if (!signup && !f.login?.trim()) return toast('กรุณากรอกชื่อผู้ใช้', 'error');
+    if (!f.password) return toast('กรุณากรอกรหัสผ่าน', 'error');
     await busy(e.submitter, async () => {
       if (signup) {
         const { data, error } = await sb.auth.signUp({
           email: f.email, password: f.password,
-          options: { data: { full_name: f.full_name }, emailRedirectTo: location.origin + location.pathname },
+          options: { data: { full_name: f.full_name, username: f.username.trim() }, emailRedirectTo: location.origin + location.pathname },
         });
         if (error) return toast(errMsg(error), 'error');
         if (!data.session) {
@@ -94,8 +98,16 @@ function renderAuth(mode = 'login') {
           renderAuth('login');
         }
       } else {
-        const { error } = await sb.auth.signInWithPassword({ email: f.email, password: f.password });
-        if (error) toast(/Invalid login/.test(error.message) ? 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' : errMsg(error), 'error');
+        let email = f.login.trim();
+        if (!email.includes('@')) {
+          const { data, error } = await sb.rpc('login_email', { p_username: email });
+          if (error) return toast(errMsg(error), 'error');
+          if (!data) return toast('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง', 'error');
+          email = data;
+        }
+        const { error } = await sb.auth.signInWithPassword({ email, password: f.password });
+        if (error) toast(/Invalid login/.test(error.message) ? 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'
+          : /not confirmed/i.test(error.message) ? 'ยังไม่ได้ยืนยันอีเมล กรุณากดลิงก์ในอีเมลก่อน' : errMsg(error), 'error');
       }
     });
   });
@@ -128,7 +140,8 @@ function renderShell() {
         ${admin.length ? `<div class="nav-group">ตั้งค่าระบบ</div>${admin.map(a).join('')}` : ''}</nav>
       <div class="who"><b>${esc(p.full_name || p.email)}</b>
         ${p.role === 'admin' ? 'แอดมิน' : `พนักงานสาขา ${esc(p.branches?.name || '')}`}
-        <div><button class="btn btn-ghost btn-sm" id="logout">${icon('logout')} ออกจากระบบ</button></div></div>
+        <div><button class="btn btn-ghost btn-sm" id="chpw">${icon('key')} เปลี่ยนรหัสผ่าน</button></div>
+        <div><button class="btn btn-ghost btn-sm" id="logout" style="margin-top:0">${icon('logout')} ออกจากระบบ</button></div></div>
     </aside>
     <div class="main">
       <div class="topbar"><button class="btn btn-ghost btn-icon" id="menuBtn" aria-label="เมนู" style="color:#fff">${icon('menu')}</button>
@@ -136,6 +149,7 @@ function renderShell() {
       <main class="page" id="page"></main>
     </div></div>`;
   $('#logout').onclick = () => sb.auth.signOut();
+  $('#chpw').onclick = changePassword;
   $('#menuBtn').onclick = () => $('#side').classList.toggle('open');
   $('#side').addEventListener('click', (e) => { if (e.target.closest('a')) $('#side').classList.remove('open'); });
 }
@@ -146,6 +160,7 @@ async function route() {
   let key = location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard';
   if (!ROUTES[key] || (ROUTES[key].admin && !isAdmin())) key = 'dashboard';
   document.querySelectorAll('[data-route]').forEach((x) => x.classList.toggle('active', x.dataset.route === key));
+  document.querySelectorAll('.modal-backdrop').forEach((m) => m.remove());
   const page = $('#page');
   const token = ++routeToken;
   page.innerHTML = '<div class="empty">กำลังโหลด…</div>';
@@ -158,4 +173,25 @@ async function route() {
     console.error(e);
     page.innerHTML = `<div class="notice err">โหลดหน้านี้ไม่สำเร็จ: ${esc(errMsg(e))}</div>`;
   }
+}
+
+// ---------------- เปลี่ยนรหัสผ่าน ----------------
+function changePassword() {
+  const { el, close } = modal({
+    title: 'เปลี่ยนรหัสผ่าน',
+    body: `<form id="pf"><div class="field"><label for="np">รหัสผ่านใหม่</label>
+      <input id="np" name="pw" type="password" minlength="6" required autocomplete="new-password">
+      <div class="hint">อย่างน้อย 6 ตัวอักษร แนะนำให้มีทั้งตัวอักษรและตัวเลข</div></div>
+      <div class="field"><label for="np2">ยืนยันรหัสผ่านใหม่</label>
+      <input id="np2" name="pw2" type="password" minlength="6" required autocomplete="new-password"></div></form>`,
+    foot: `<button class="btn" data-close>ยกเลิก</button><button class="btn btn-primary" data-save>บันทึกรหัสผ่าน</button>`,
+  });
+  el.querySelector('[data-save]').onclick = (e) => busy(e.currentTarget, async () => {
+    const f = formData(el.querySelector('#pf'));
+    if ((f.pw || '').length < 6) return toast('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร', 'error');
+    if (f.pw !== f.pw2) return toast('รหัสผ่านทั้งสองช่องไม่ตรงกัน', 'error');
+    const { error } = await sb.auth.updateUser({ password: f.pw });
+    if (error) return toast(/different from the old/i.test(error.message) ? 'รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสเดิม' : errMsg(error), 'error');
+    toast('เปลี่ยนรหัสผ่านแล้ว', 'ok'); close();
+  });
 }

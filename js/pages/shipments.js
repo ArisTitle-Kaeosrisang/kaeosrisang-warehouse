@@ -84,7 +84,9 @@ async function detail(id, reload) {
   if (admin && ['draft', 'shipping'].includes(s.status)) btn.push(`<button class="btn" data-a="edit">${icon('edit')} แก้ไข</button>`);
   if (admin && s.status === 'draft') btn.push(`<button class="btn" data-a="ship">${icon('truck')} เริ่มจัดส่ง</button>`);
   if (canConfirm) btn.push(`<button class="btn btn-ok" data-a="confirm">${icon('check')} ${admin ? 'ยืนยันส่งแล้ว' : 'ยืนยันรับสินค้าแล้ว'}</button>`);
-  if (admin && s.status === 'delivered') btn.push(`<button class="btn btn-danger" data-a="revert">${icon('undo')} ยกเลิกการยืนยัน</button>`);
+  if (admin && s.status === 'delivered') btn.push(`<button class="btn" data-a="editDelivered">${icon('edit')} แก้ไข</button>`,
+    `<button class="btn btn-danger" data-a="revert">${icon('undo')} ยกเลิกการยืนยัน</button>`,
+    `<button class="btn btn-danger" data-a="deleteDelivered">${icon('trash')} ลบ</button>`);
   if (admin && ['draft', 'shipping'].includes(s.status)) btn.push(`<button class="btn btn-danger" data-a="cancel">ยกเลิกใบส่ง</button>`);
   if (admin && s.status === 'cancelled') btn.push(`<button class="btn" data-a="reopen">${icon('undo')} เปิดเป็นร่างอีกครั้ง</button>`);
   if (admin && ['draft', 'cancelled'].includes(s.status)) btn.push(`<button class="btn btn-danger" data-a="delete">${icon('trash')} ลบ</button>`);
@@ -132,6 +134,22 @@ async function detail(id, reload) {
       if (!await confirmDialog(`ยกเลิกการยืนยันใบ ${s.doc_no}? ระบบจะคืนยอดสต็อก และเปลี่ยนสถานะกลับเป็น "กำลังจัดส่ง" เพื่อแก้ไขได้`, { ok: 'ยกเลิกการยืนยัน', danger: true })) return;
       try { await q(sb.rpc('revert_delivery', { p_shipment_id: s.id })); after('คืนยอดสต็อกแล้ว ใบส่งกลับเป็นกำลังจัดส่ง'); }
       catch (e) { toast(errMsg(e), 'error'); }
+    },
+    editDelivered: async () => {
+      if (!await confirmDialog(`ใบ ${s.doc_no} ส่งแล้ว ระบบจะคืนยอดสต็อกก่อนเปิดหน้าแก้ไข เมื่อแก้เสร็จให้กด "บันทึกและยืนยันส่งแล้ว" เพื่อตัดสต็อกตามยอดใหม่`, { ok: 'คืนสต็อกและแก้ไข' })) return;
+      try {
+        await q(sb.rpc('revert_delivery', { p_shipment_id: s.id }));
+        invalidate('products'); close(); reload();
+        editor(await loadFull(s.id), reload);
+      } catch (e) { toast(errMsg(e), 'error'); }
+    },
+    deleteDelivered: async () => {
+      if (!await confirmDialog(`ลบใบ ${s.doc_no} ที่ส่งแล้ว? ระบบจะคืนยอดสต็อกทั้ง ${items.length} รายการเข้าคลัง แล้วลบใบนี้ถาวร`, { ok: 'คืนสต็อกและลบ', danger: true })) return;
+      try {
+        await q(sb.rpc('revert_delivery', { p_shipment_id: s.id }));
+        await q(sb.from('shipments').delete().eq('id', s.id));
+        after('คืนสต็อกและลบใบส่งสินค้าแล้ว');
+      } catch (e) { toast(errMsg(e), 'error'); }
     },
     delete: async () => {
       if (!await confirmDialog(`ลบใบส่งสินค้า ${s.doc_no} ถาวร?`, { ok: 'ลบ', danger: true })) return;
